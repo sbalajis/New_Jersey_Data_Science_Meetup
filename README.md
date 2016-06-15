@@ -13,3 +13,8 @@ Repo of presentations at NJ Data Science Meetup @ Parsippany
 - brewer2mpl version = 1.4.1
 - IPython version = 3.1.0
 
+
+Please feel free to email me if you have any questions @ sbalajis@gmail.com
+I am on twitter @maximusandme
+And linkedin - https://www.linkedin.com/in/balajisundaresan
+Github: https://github.com/sbalajis/New_Jersey_Data_Science_Meetup
