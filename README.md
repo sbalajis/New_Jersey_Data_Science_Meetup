@@ -15,6 +15,5 @@ Repo of presentations at NJ Data Science Meetup @ Parsippany
 
 
 Please feel free to email me if you have any questions @ sbalajis@gmail.com
-I am on twitter @maximusandme
-And linkedin - https://www.linkedin.com/in/balajisundaresan
-Github: https://github.com/sbalajis/New_Jersey_Data_Science_Meetup
+- I am on twitter @maximusandme
+- and linkedin - https://www.linkedin.com/in/balajisundaresan
