@@ -1,0 +1,886 @@
+---
+title: "Bayesian Model"
+author: "Ranajay"
+output: word_document
+---
+
+Project Statement
+=================
+Star Technologies Company (STC) has been in the business of manufacturing remote
+controllers for televisions and audio systems for two decades. It is now planning on entering the computer tablet market with a new product.
+
+Obee Juan, Star's product development manager,has narrowed them down to
+what he believes are the four most important: retail unit price, screen size, processor speed,and RAM.His qualitative results suggest that brand 
+is also important to purchase consideration.
+
+Obee develop a CBC task with the following five attributes:
+Brand- 4 levels: STC, Somesong, Pear, Gaggle (level codes: 0,1,2,3)
+Price- 3 levels: $199, $299, $399 (levels: 0,1,2)
+Screen- 3 levels: 5 inch, 7 inch, 10 inch (levels: 0,1,2)
+RAM- 3 levels: 8 Gb, 16 Gb, 32 Gb (Gb = "gigabytes") (levels: 0,1,2)
+Processor- 3 levels: 1.5 GHz, 2 GHz, 2.5 GHz (GHz = "gigahertz") (levels: 0,1,2)
+
+The task was designed to allow estimation of the two-way interaction between brand and price. 
+It has 36 choice sets. Each choice set presented three alternatives, each described as specific combinations of attribute levels. 
+Respondents picked from each choice set the alternative they most preferred, Alternative 1, 2, or 3.
+
+Prerequisite Steps
+===================
+
+(A) stc-cbc-respondents-v3.RData - This is the respondent data in R file format. The variables in it are documented in the file stc-v3-datamap.txt. We will
+load this file in R.
+
+(B) stb-dc-task-cbc-v3.csv - This describes the choice task in attributes and levels; it's a tab-delimited csv file with a header record. 
+The attribute levels are coded 0,1,2,3. They correspond to the descriptions of the attributes and levels provided in the assignment description document.
+
+(C) extra-scenarios.csv - Descriptions of the additional choice scenarios that we will analyze after estimating your MNL model; 
+a comma-delimited csv file.
+
+(D) efCode.RData - A couple of R functions we will use to code your attributes and levels as the predictor variables you'll use in your MNL model; an R file.
+We will load this file.
+
+INITIALIZE
+==========
+
+```{r}
+#setwd("C:/R_Working/") # Set your own working directory
+require(dummies)
+load("stc-cbc-respondents-v3.RData")
+load("efCode.RData") 
+
+str(efcode.att.f)
+str(efcode.attmat.f)
+str(resp.data.v3)
+
+```
+================= INITIALIZE ENDS ===================
+
+
+=======================================================================
+STEP1 - Starts              
+=======================================================================
+
+CREATING PREDICTOR VARIABLES
+----------------------------
+
+```{r}
+taskV3 <- read.csv("stc-dc-task-cbc-v3.csv", sep="\t")
+
+str(taskV3)
+task.mat <- as.matrix(taskV3[, c("screen", "RAM", "processor", "price", "brand")])
+dim(task.mat)
+X.mat=efcode.attmat.f(task.mat)
+dim(X.mat)
+
+str(task.mat) # 5 columns; 108 rows
+str(X.mat)  # 11 columns; 108 rows
+head(task.mat)
+head(X.mat)
+
+```
+
+Creation of interactive variable brand and price:
+-------------------------------------------------
+- Create a new price variable (a vector) by subtracting each price value from the mean price.
+- Multiply this vector with each column in X.mat that represents brand (col 9:11). Create a matrix from 9:11 from X.mat
+------------------------------------------------
+
+```{r}
+pricevec  <- taskV3$price-mean(taskV3$price)
+X.brands  <- X.mat[,9:11] 
+X.BrandByPrice <- X.brands*pricevec #Vector and Matrix Multiplication
+X.matrix=cbind(X.mat,X.BrandByPrice) 
+dim(X.matrix)
+```
+
+To verify matrix multiplication: X premultiplied by it's transpose is a square matrix. Determinant of the product will be a high positive number.%*% means matrix multiplication. X.matrix is the design matrix
+
+```{r}
+det(t(X.matrix)%*%X.matrix) #4.19695e+23: Verified Successfully
+
+```
+
+DEVELOP THE RESPONSE MATRIX
+----------------------------
+
+We need to get the responses that STC's survey participants provided to the 36 choice questions they answered. The are in the data frame resp.data-v3 that's in the R data file stc-cbc-respondents-v3.RData. The variable names are DCM1_1 through DCM1_36. They are the 4th through the 39th variables in resp.data-v3
+---------------------------
+
+```{r}
+apply(resp.data.v3[4:39], 2, function(x){tabulate(na.omit(x))}) 
+summary(resp.data.v3)
+head(resp.data.v3) # 36 choices: DCM1_1 to DCM1_36 (col 4 to 39)
+ydata=resp.data.v3[,4:39]
+names(ydata)
+ydata=na.omit(ydata) # Remove missing values
+str(ydata)
+ydata=as.matrix(ydata) # Convert to Matrix
+head(ydata)
+```
+
+
+Creating Data Structure for MCMC
+--------------------------------
+We have our X matrix("X.matrix"), our choice responses (they're in ydata), and zowner, our indicator variable for STC product ownership.
+
+lgtdata is a list of data for each respondent. Its length equals the number of respondents (424). (Lists have length.) The data for each respondent is a list with two elements, X.matrix and the respondent's choice responses, from their row in ydata.So, lgtdata is a list of lists.
+--------------------------------
+
+```{r}
+lgtdata = NULL # a starter placeholder for your list 
+for (i in 1:424) { 
+	lgtdata[[i]]=list(y=ydata[i,],X=X.matrix) 
+	} 
+
+length(lgtdata)
+lgtdata[[3]]
+lgtdata[[4]]
+
+str(lgtdata)
+
+```
+
+Fitting the HB Model (No Covariate) - MODEL1
+--------------------------------------------
+
+```{r}
+require(bayesm)
+Data1=list(p=3,lgtdata=lgtdata) # p:number of choice alternatives = 3 
+mcmctest1=list(R=100000,keep=100)
+set.seed(123)
+testrun1=rhierMnlDP(Data=Data1,Mcmc=mcmctest1)
+
+```
+=======================================================================
+STEP1 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP2 - Starts              
+=======================================================================
+
+
+Analyzing Results (Model No Covariate) - MODEL1
+-----------------------------------------------
+
+```{r}
+names(testrun1)
+betadraw1=testrun1$betadraw
+dim(betadraw1)
+```
+
+Determine Burn-In Period
+------------------------
+Based on the graph for 4 respondents:
+Burn-In Period = 601
+
+```{r}
+#1st person
+plot(1:length(betadraw1[1,1,]),betadraw1[1,1,])
+plot(1:length(betadraw1[1,2,]),betadraw1[1,2,])
+plot(1:length(betadraw1[1,3,]),betadraw1[1,3,])
+plot(1:length(betadraw1[1,4,]),betadraw1[1,4,])
+plot(1:length(betadraw1[1,5,]),betadraw1[1,5,])
+plot(1:length(betadraw1[1,6,]),betadraw1[1,6,])
+plot(1:length(betadraw1[1,7,]),betadraw1[1,7,])
+plot(1:length(betadraw1[1,8,]),betadraw1[1,8,])
+plot(1:length(betadraw1[1,9,]),betadraw1[1,9,])
+plot(1:length(betadraw1[1,10,]),betadraw1[1,10,])
+plot(1:length(betadraw1[1,11,]),betadraw1[1,11,])
+plot(1:length(betadraw1[1,12,]),betadraw1[1,12,])
+plot(1:length(betadraw1[1,13,]),betadraw1[1,13,])
+plot(1:length(betadraw1[1,14,]),betadraw1[1,14,])
+
+#100th person
+plot(1:length(betadraw1[100,1,]),betadraw1[100,1,])
+plot(1:length(betadraw1[100,2,]),betadraw1[100,2,])
+plot(1:length(betadraw1[100,3,]),betadraw1[100,3,])
+plot(1:length(betadraw1[100,4,]),betadraw1[100,4,])
+plot(1:length(betadraw1[100,5,]),betadraw1[100,5,])
+plot(1:length(betadraw1[100,6,]),betadraw1[100,6,])
+plot(1:length(betadraw1[100,7,]),betadraw1[100,7,])
+plot(1:length(betadraw1[100,8,]),betadraw1[100,8,])
+plot(1:length(betadraw1[100,9,]),betadraw1[100,9,])
+plot(1:length(betadraw1[100,10,]),betadraw1[100,10,])
+plot(1:length(betadraw1[100,11,]),betadraw1[100,11,])
+plot(1:length(betadraw1[100,12,]),betadraw1[100,12,])
+plot(1:length(betadraw1[100,13,]),betadraw1[100,13,])
+plot(1:length(betadraw1[100,14,]),betadraw1[100,14,])
+
+#200th person
+plot(1:length(betadraw1[200,1,]),betadraw1[200,1,])
+plot(1:length(betadraw1[200,2,]),betadraw1[200,2,])
+plot(1:length(betadraw1[200,3,]),betadraw1[200,3,])
+plot(1:length(betadraw1[200,4,]),betadraw1[200,4,])
+plot(1:length(betadraw1[200,5,]),betadraw1[200,5,])
+plot(1:length(betadraw1[200,6,]),betadraw1[200,6,])
+plot(1:length(betadraw1[200,7,]),betadraw1[200,7,])
+plot(1:length(betadraw1[200,8,]),betadraw1[200,8,])
+plot(1:length(betadraw1[200,9,]),betadraw1[200,9,])
+plot(1:length(betadraw1[200,10,]),betadraw1[200,10,])
+plot(1:length(betadraw1[200,11,]),betadraw1[200,11,])
+plot(1:length(betadraw1[200,12,]),betadraw1[200,12,])
+plot(1:length(betadraw1[200,13,]),betadraw1[200,13,])
+plot(1:length(betadraw1[200,14,]),betadraw1[200,14,])
+
+#5th person
+plot(1:length(betadraw1[5,1,]),betadraw1[5,1,])
+plot(1:length(betadraw1[5,2,]),betadraw1[5,2,])
+plot(1:length(betadraw1[5,3,]),betadraw1[5,3,])
+plot(1:length(betadraw1[5,4,]),betadraw1[5,4,])
+plot(1:length(betadraw1[5,5,]),betadraw1[5,5,])
+plot(1:length(betadraw1[5,6,]),betadraw1[5,6,])
+plot(1:length(betadraw1[5,7,]),betadraw1[5,7,])
+plot(1:length(betadraw1[5,8,]),betadraw1[5,8,])
+plot(1:length(betadraw1[5,9,]),betadraw1[5,9,])
+plot(1:length(betadraw1[5,10,]),betadraw1[5,10,])
+plot(1:length(betadraw1[5,11,]),betadraw1[5,11,])
+plot(1:length(betadraw1[5,12,]),betadraw1[5,12,])
+plot(1:length(betadraw1[5,13,]),betadraw1[5,13,])
+plot(1:length(betadraw1[5,14,]),betadraw1[5,14,])
+
+```
+
+=======================================================================
+STEP2 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP3 - Starts              
+=======================================================================
+
+Study the Beta Distribution
+---------------------------
+Based on the plots drawn for 21st & 57th respondents.
+All the variables have relatively normal distribution.
+So, we can use function Mean on the Beta Values.
+
+```{r}
+
+plot(density(betadraw1[21,1,601:1000],width=2)) 
+plot(density(betadraw1[21,2,601:1000],width=2))
+plot(density(betadraw1[21,3,601:1000],width=2)) 
+plot(density(betadraw1[21,5,601:1000],width=2)) 
+plot(density(betadraw1[21,6,601:1000],width=2))
+plot(density(betadraw1[21,7,601:1000],width=2))
+plot(density(betadraw1[21,8,601:1000],width=2))
+plot(density(betadraw1[21,9,601:1000],width=2))
+plot(density(betadraw1[21,10,601:1000],width=2))
+plot(density(betadraw1[21,11,601:1000],width=2))
+plot(density(betadraw1[21,12,601:1000],width=2))
+plot(density(betadraw1[21,13,601:1000],width=2))
+plot(density(betadraw1[21,14,601:1000],width=2))
+
+plot(density(betadraw1[57,1,601:1000],width=2)) 
+plot(density(betadraw1[57,2,601:1000],width=2))
+plot(density(betadraw1[57,3,601:1000],width=2)) 
+plot(density(betadraw1[57,4,601:1000],width=2)) 
+plot(density(betadraw1[57,5,601:1000],width=2)) 
+plot(density(betadraw1[57,6,601:1000],width=2))
+plot(density(betadraw1[57,7,601:1000],width=2))
+plot(density(betadraw1[57,8,601:1000],width=2))
+plot(density(betadraw1[57,9,601:1000],width=2))
+plot(density(betadraw1[57,10,601:1000],width=2))
+plot(density(betadraw1[57,11,601:1000],width=2))
+plot(density(betadraw1[57,12,601:1000],width=2))
+plot(density(betadraw1[57,13,601:1000],width=2))
+plot(density(betadraw1[57,14,601:1000],width=2))
+
+
+par(mfrow=c(3,3))
+plot(density(betadraw1[21,8,601:1000],width=2))
+plot(density(betadraw1[57,8,601:1000],width=2))
+plot(density(betadraw1[180,8,601:1000],width=2))
+par(mfrow=c(1,1))
+plot(density(betadraw1[180,8,601:1000],width=2))
+
+```
+
+=======================================================================
+STEP3 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP4 - Starts              
+=======================================================================
+
+Computing BetaMeans for each respondent
+---------------------------------------
+
+
+```{r}
+betameans1=apply(betadraw1[,,601:1000],c(1,2),mean)
+dim(betameans1)
+head(betameans1)
+
+#Calculate LogOdd/Probability for each respondent's model
+xbeta1=X.matrix%*%t(betameans1)
+dim(xbeta1)
+head(xbeta1)
+xbeta1=matrix(xbeta1,ncol=3,byrow=TRUE)
+dim(xbeta1)
+head(xbeta1)
+
+expxbeta1=exp(xbeta1)
+dim(expxbeta1)
+head(expxbeta1)
+
+rsumvec1=rowSums(expxbeta1) 
+pchoicemat1=expxbeta1/rsumvec1 
+dim(pchoicemat1)
+head(pchoicemat1)
+
+custchoice1 <- max.col(pchoicemat1)
+str(custchoice1) # Vector of customer choices for each subject
+head(custchoice1)
+
+m1 <- matrix(custchoice1, nrow =36,  byrow=F)
+mt1 <- t(m1)
+dim(mt1)
+apply(mt1, 2, function(x){tabulate(na.omit(x))})
+
+```
+
+=======================================================================
+STEP4 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP5 - Starts              
+=======================================================================
+
+Validate the Model using Training Data
+---------------------------------------
+Percent Accuracy: 88.29271 (88.3%)
+Area under the ROC curve: 0.8645
+```{r}
+## Confusion Matrix
+ydatavec <- as.vector(t(ydata))
+conf.matrix1 = table(custchoice1,ydatavec)
+conf.matrix1
+
+str(conf.matrix1)
+head(conf.matrix1)
+dim(conf.matrix1)
+
+## Calculate percent accuracy
+pred.success1 = 0
+pred.total1   = 0
+for (i in 1:nrow(conf.matrix1)) {
+  for (j in 1:ncol(conf.matrix1)) {
+    if (i==j) {
+        pred.success1 = pred.success1 + conf.matrix1[i,j]
+    }
+    pred.total1 = pred.total1 + conf.matrix1[i,j]
+  }
+}
+
+perc.accuracy1 = (pred.success1/pred.total1)*100
+perc.accuracy1
+
+## ROC Curve
+require("pROC")
+roctest1 <- roc(ydatavec, custchoice1, plot=TRUE)    ### ROC curve
+auc(roctest1)                       
+
+```
+
+=======================================================================
+STEP5 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP7 - Starts              
+=======================================================================
+
+Develop One Predictive Model
+(Using Mean of all Coefficents of each Beta)
+--------------------------------------------
+
+
+```{r}
+#We can get a matrix of coefficient means by respondent
+betameansoverall1 <- apply(betadraw1[,,601:1000],c(2),mean) 
+betameansoverall1
+
+perc1 <- apply(betadraw1[,,601:1000],2,quantile,probs=c(0.05,0.10,0.25,0.5 ,0.75,0.90,0.95))
+perc1
+
+```
+
+=======================================================================
+STEP7 - Ends              
+=======================================================================
+
+
+=======================================================================
+STEP8 - Starts              
+=======================================================================
+
+Predict scenarios with the model (MODEL1)
+----------------------------------------------------
+Accuracy Percent: 94.4%
+
+```{r}
+betavec1=matrix(betameansoverall1,ncol=1,byrow=TRUE)
+xbeta1=X.matrix%*%(betavec1)
+dim(xbeta1)
+xbeta1=matrix(xbeta1,ncol=3,byrow=TRUE)
+dim(xbeta1)
+
+expxbeta1=exp(xbeta1)
+dim(expxbeta1)
+head(expxbeta1)
+
+rsumvec1=rowSums(expxbeta1) 
+pchoicemat1=expxbeta1/rsumvec1 
+dim(pchoicemat1)
+head(pchoicemat1)
+
+pchoicematrnd1 <- round(pchoicemat1*100,digits=0)
+pchoicematrnd1
+write.csv(pchoicematrnd1,"predict1_matrix.csv")
+
+resp = apply(resp.data.v3[4:39], 2, function(x){tabulate(na.omit(x))}) 
+t.resp = t(resp)
+write.csv(t.resp,"response_matrix.csv")
+
+```
+
+=======================================================================
+STEP8 - Ends              
+=======================================================================
+
+=======================================================================
+STEP9 - Starts              
+=======================================================================
+
+Predict extra scenarios with the model (MODEL1)
+-----------------------------------------------------------
+
+ChoiceSet1: Choose Choice2 (69%)
+ChoiceSet2: Choose Choice1 (51%)
+
+```{r}
+ex_scen <- read.csv("extra-scenarios.csv")
+str(ex_scen)
+Xextra.matrix <- as.matrix(ex_scen[,c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","V11","V12","V13","V14")])
+dim(Xextra.matrix)
+
+betavec.extra1=matrix(betameansoverall1,ncol=1,byrow=TRUE)
+xextrabeta1=Xextra.matrix%*%(betavec.extra1)
+xextrabeta1=matrix(xextrabeta1,ncol=3,byrow=TRUE)
+dim(xextrabeta1)
+
+expxbetaextra1=exp(xextrabeta1)
+rsumvec.extra1=rowSums(expxbetaextra1)
+pchoicemat.extra1=expxbetaextra1/rsumvec.extra1
+pchoicemat.extra1 
+
+pchoicemat.extra1.rnd1 <- round(pchoicemat.extra1*100,digits=0)
+pchoicemat.extra1.rnd1
+
+```
+
+=======================================================================
+STEP9 - Ends              
+=======================================================================
+
+
+
+=======================================================================
+STEP10 - Starts              
+=======================================================================
+1) Prepare the Full Model
+2) Comparisons of Levels in each attribute
+3) Imapct of Interaction between Brand/Price
+4) Parts-Worth plot - R Plot/Excel Plot
+
+```{r, echo=FALSE}
+plot(betameansoverall1)
+barplot(betameansoverall1)
+```
+
+=======================================================================
+STEP10 - Ends              
+=======================================================================
+
+=======================================================================
+STEP11 - Starts              
+=======================================================================
+
+Perform All the steps (1-8) with Model Ownership Covariate - MODEL2
+If MODEL2 performs better thah MODEL1, do step# 9,10
+--------------------------------------------------------------------
+
+
+DETERMINE COVARIATE
+-------------------
+There is a variable in the respondent data set called vList3. Recode this into a variable that is equal to 1 if a respondent has ever owned an STC product. Otherwise, make it equal to zero. 
+
+```{r}
+zowner <- 1 * (!is.na(resp.data.v3$vList3))
+```
+
+Fit The Model
+-------------
+
+```{r}
+require(bayesm)
+zownertest=matrix(scale(zowner,scale=FALSE),ncol=1)
+dim(zownertest)
+Data2=list(p=3,lgtdata=lgtdata,Z=zownertest) # p:number of choice alternatives = 3 
+mcmctest2=list(R=100000,keep=100)
+set.seed(123)
+testrun2=rhierMnlDP(Data=Data2,Mcmc=mcmctest2)
+
+```
+
+Analyzing Results (Model With Covariate) - MODEL2
+-------------------------------------------------
+
+```{r}
+names(testrun2)
+betadraw2=testrun2$betadraw
+dim(betadraw2)
+```
+
+Determine Burn-In Period
+------------------------
+Based on the graph for 4 respondents:
+Burn-In Period = 801
+
+```{r}
+#3rd person
+plot(1:length(betadraw2[3,1,]),betadraw2[3,1,])
+plot(1:length(betadraw2[3,2,]),betadraw2[3,2,])
+plot(1:length(betadraw2[3,3,]),betadraw2[3,3,])
+plot(1:length(betadraw2[3,4,]),betadraw2[3,4,])
+plot(1:length(betadraw2[3,5,]),betadraw2[3,5,])
+plot(1:length(betadraw2[3,6,]),betadraw2[3,6,])
+plot(1:length(betadraw2[3,7,]),betadraw2[3,7,])
+plot(1:length(betadraw2[3,8,]),betadraw2[3,8,])
+plot(1:length(betadraw2[3,9,]),betadraw2[3,9,])
+plot(1:length(betadraw2[3,10,]),betadraw2[3,10,])
+plot(1:length(betadraw2[3,11,]),betadraw2[3,11,])
+plot(1:length(betadraw2[3,12,]),betadraw2[3,12,])
+plot(1:length(betadraw2[3,13,]),betadraw2[3,13,])
+plot(1:length(betadraw2[3,14,]),betadraw2[3,14,])
+
+#120th person
+plot(1:length(betadraw2[120,1,]),betadraw2[120,1,])
+plot(1:length(betadraw2[120,2,]),betadraw2[120,2,])
+plot(1:length(betadraw2[120,3,]),betadraw2[120,3,])
+plot(1:length(betadraw2[120,4,]),betadraw2[120,4,])
+plot(1:length(betadraw2[120,5,]),betadraw2[120,5,])
+plot(1:length(betadraw2[120,6,]),betadraw2[120,6,])
+plot(1:length(betadraw2[120,7,]),betadraw2[120,7,])
+plot(1:length(betadraw2[120,8,]),betadraw2[120,8,])
+plot(1:length(betadraw2[120,9,]),betadraw2[120,9,])
+plot(1:length(betadraw2[120,10,]),betadraw2[120,10,])
+plot(1:length(betadraw2[120,11,]),betadraw2[120,11,])
+plot(1:length(betadraw2[120,12,]),betadraw2[120,12,])
+plot(1:length(betadraw2[120,13,]),betadraw2[120,13,])
+plot(1:length(betadraw2[120,14,]),betadraw2[120,14,])
+
+#230th person
+plot(1:length(betadraw2[230,1,]),betadraw2[230,1,])
+plot(1:length(betadraw2[230,2,]),betadraw2[230,2,])
+plot(1:length(betadraw2[230,3,]),betadraw2[230,3,])
+plot(1:length(betadraw2[230,4,]),betadraw2[230,4,])
+plot(1:length(betadraw2[230,5,]),betadraw2[230,5,])
+plot(1:length(betadraw2[230,6,]),betadraw2[230,6,])
+plot(1:length(betadraw2[230,7,]),betadraw2[230,7,])
+plot(1:length(betadraw2[230,8,]),betadraw2[230,8,])
+plot(1:length(betadraw2[230,9,]),betadraw2[230,9,])
+plot(1:length(betadraw2[230,10,]),betadraw2[230,10,])
+plot(1:length(betadraw2[230,11,]),betadraw2[230,11,])
+plot(1:length(betadraw2[230,12,]),betadraw2[230,12,])
+plot(1:length(betadraw2[230,13,]),betadraw2[230,13,])
+plot(1:length(betadraw2[230,14,]),betadraw2[230,14,])
+
+#70th person
+plot(1:length(betadraw2[70,1,]),betadraw2[70,1,])
+plot(1:length(betadraw2[70,2,]),betadraw2[70,2,])
+plot(1:length(betadraw2[70,3,]),betadraw2[70,3,])
+plot(1:length(betadraw2[70,4,]),betadraw2[70,4,])
+plot(1:length(betadraw2[70,5,]),betadraw2[70,5,])
+plot(1:length(betadraw2[70,6,]),betadraw2[70,6,])
+plot(1:length(betadraw2[70,7,]),betadraw2[70,7,])
+plot(1:length(betadraw2[70,8,]),betadraw2[70,8,])
+plot(1:length(betadraw2[70,9,]),betadraw2[70,9,])
+plot(1:length(betadraw2[70,10,]),betadraw2[70,10,])
+plot(1:length(betadraw2[70,11,]),betadraw2[70,11,])
+plot(1:length(betadraw2[70,12,]),betadraw2[70,12,])
+plot(1:length(betadraw2[70,13,]),betadraw2[70,13,])
+plot(1:length(betadraw2[70,14,]),betadraw2[70,14,])
+
+```
+
+Study the Beta Distribution
+---------------------------
+Based on the plots drawn for 51st & 100th respondents.
+All the variables have relatively normal distribution.
+So, we can use function Mean on the Beta Values.
+
+```{r}
+
+plot(density(betadraw2[51,1,801:1000],width=2)) 
+plot(density(betadraw2[51,2,801:1000],width=2))
+plot(density(betadraw2[51,3,801:1000],width=2)) 
+plot(density(betadraw2[51,4,801:1000],width=2)) 
+plot(density(betadraw2[51,5,801:1000],width=2)) 
+plot(density(betadraw2[51,6,801:1000],width=2))
+plot(density(betadraw2[51,7,801:1000],width=2))
+plot(density(betadraw2[51,8,801:1000],width=2))
+plot(density(betadraw2[51,9,801:1000],width=2))
+plot(density(betadraw2[51,10,801:1000],width=2))
+plot(density(betadraw2[51,11,801:1000],width=2))
+plot(density(betadraw2[51,12,801:1000],width=2))
+plot(density(betadraw2[51,13,801:1000],width=2))
+plot(density(betadraw2[51,14,801:1000],width=2))
+
+plot(density(betadraw2[100,1,801:1000],width=2)) 
+plot(density(betadraw2[100,2,801:1000],width=2))
+plot(density(betadraw2[100,3,801:1000],width=2)) 
+plot(density(betadraw2[100,4,801:1000],width=2)) 
+plot(density(betadraw2[100,5,801:1000],width=2)) 
+plot(density(betadraw2[100,6,801:1000],width=2))
+plot(density(betadraw2[100,7,801:1000],width=2))
+plot(density(betadraw2[100,8,801:1000],width=2))
+plot(density(betadraw2[100,9,801:1000],width=2))
+plot(density(betadraw2[100,10,801:1000],width=2))
+plot(density(betadraw2[100,11,801:1000],width=2))
+plot(density(betadraw2[100,12,801:1000],width=2))
+plot(density(betadraw2[100,13,801:1000],width=2))
+plot(density(betadraw2[100,14,801:1000],width=2))
+
+par(mfrow=c(3,3))
+plot(density(betadraw2[21,8,601:1000],width=2))
+plot(density(betadraw2[53,8,601:1000],width=2))
+plot(density(betadraw2[125,8,601:1000],width=2))
+par(mfrow=c(1,1))
+
+```
+
+Computing BetaMeans for each respondent
+---------------------------------------
+
+```{r}
+betameans2=apply(betadraw2[,,801:1000],c(1,2),mean)
+dim(betameans2)
+head(betameans2)
+
+#Calculate LogOdd/Probability for each respondent's model
+xbeta2=X.matrix%*%t(betameans2)
+dim(xbeta2)
+head(xbeta2)
+xbeta2=matrix(xbeta2,ncol=3,byrow=TRUE)
+dim(xbeta2)
+head(xbeta2)
+
+expxbeta2=exp(xbeta2)
+dim(expxbeta2)
+head(expxbeta2)
+
+rsumvec2=rowSums(expxbeta2) 
+pchoicemat2=expxbeta2/rsumvec2 
+dim(pchoicemat2)
+head(pchoicemat2)
+
+custchoice2 <- max.col(pchoicemat2)
+str(custchoice2) # Vector of customer choices for each subject
+head(custchoice2)
+
+m2 <- matrix(custchoice2, nrow =36,  byrow=F)
+mt2 <- t(m1)
+dim(mt2)
+apply(mt2, 2, function(x){tabulate(na.omit(x))})
+
+```
+
+Validate the Model using Training Data
+---------------------------------------
+Percent Accuracy: 88.43029 (88.4%)
+Area under the ROC curve: 0.8686
+
+```{r}
+## Confusion Matrix
+ydatavec <- as.vector(t(ydata))
+conf.matrix2 = table(custchoice2,ydatavec)
+conf.matrix2
+
+str(conf.matrix2)
+head(conf.matrix2)
+dim(conf.matrix2)
+
+## Calculate percent accuracy
+pred.success2 = 0
+pred.total2   = 0
+for (i in 1:nrow(conf.matrix2)) {
+  for (j in 1:ncol(conf.matrix2)) {
+    if (i==j) {
+        pred.success2 = pred.success2 + conf.matrix2[i,j]
+    }
+    pred.total2 = pred.total2 + conf.matrix2[i,j]
+  }
+}
+
+perc.accuracy2 = (pred.success2/pred.total2)*100
+perc.accuracy2
+
+## ROC Curve
+require("pROC")
+roctest2 <- roc(ydatavec, custchoice2, plot=TRUE)    ### ROC curve
+auc(roctest2)                       
+
+```
+
+Develop One Predictive Model
+(Using Mean of all Coefficents of each Beta)
+--------------------------------------------
+
+```{r}
+#We can get a matrix of coefficient means by respondent
+betameansoverall2 <- apply(betadraw2[,,801:1000],c(2),mean) 
+betameansoverall2
+write.csv(betameansoverall2,"model2_coeff.csv")
+
+perc2 <- apply(betadraw2[,,801:1000],2,quantile,probs=c(0.05,0.10,0.25,0.5 ,0.75,0.90,0.95))
+perc2
+```
+
+Predict scenarios with the model (MODEL2)
+-----------------------------------------
+Accuracy Percent: 94.4%
+
+```{r}
+betavec2=matrix(betameansoverall2,ncol=1,byrow=TRUE)
+xbeta2=X.matrix%*%(betavec2)
+dim(xbeta2)
+xbeta2=matrix(xbeta2,ncol=3,byrow=TRUE)
+dim(xbeta2)
+
+expxbeta2=exp(xbeta2)
+dim(expxbeta2)
+head(expxbeta2)
+
+rsumvec2=rowSums(expxbeta2) 
+pchoicemat2=expxbeta2/rsumvec2 
+dim(pchoicemat2)
+head(pchoicemat2)
+
+pchoicematrnd2 <- round(pchoicemat2*100,digits=0)
+pchoicematrnd2
+write.csv(pchoicematrnd2,"predict2_matrix.csv")
+
+custchoice2 = max.col(pchoicematrnd2)
+mat.custchoice2 = matrix(custchoice2,nrow=36,ncol=1)
+write.csv(mat.custchoice2,"custChoice2_matrix.csv")
+
+
+
+resp = apply(resp.data.v3[4:39], 2, function(x){tabulate(na.omit(x))}) 
+t.resp = t(resp)
+write.csv(t.resp,"response_matrix.csv")
+
+deltradraw2 = apply(testrun2$Deltadraw[801:1000,],2,mean)
+write.csv(deltradraw2,"delta2_matrix.csv")
+
+
+```
+
+Predict extra scenarios with the model (MODEL2)
+-----------------------------------------------------------
+ChoiceSet1: Choose Choice2 (71%)
+ChoiceSet2: Choose Choice1 (53%)
+
+```{r}
+ex_scen <- read.csv("extra-scenarios.csv")
+str(ex_scen)
+Xextra.matrix <- as.matrix(ex_scen[,c("V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","V11","V12","V13","V14")])
+dim(Xextra.matrix)
+
+betavec.extra2=matrix(betameansoverall2,ncol=1,byrow=TRUE)
+xextrabeta2=Xextra.matrix%*%(betavec.extra2)
+xextrabeta2=matrix(xextrabeta2,ncol=3,byrow=TRUE)
+dim(xextrabeta2)
+
+expxbetaextra2=exp(xextrabeta2)
+rsumvec.extra2=rowSums(expxbetaextra2)
+pchoicemat.extra2=expxbetaextra2/rsumvec.extra2
+pchoicemat.extra2 
+
+pchoicemat.extra2.rnd2 <- round(pchoicemat.extra2*100,digits=0)
+pchoicemat.extra2.rnd2
+
+custchoice.extra2 = max.col(pchoicemat.extra2.rnd2)
+mat.custchoice.extra2 = matrix(custchoice.extra2,nrow=2,ncol=1)
+write.csv(mat.custchoice.extra2,"Extra_custChoice2_matrix.csv")
+
+```
+
+Predict My extra scenarios with the model (MODEL2)
+-----------------------------------------------------------
+MyChoiceSet1: Choose Choice3 (75%)
+MyChoiceSet2: Choose Choice3 (41%)
+
+```{r}
+my_task = read.csv("Myextra-scenarios-v3.csv")
+my_task.mat <- as.matrix(my_task[, c("screen", "RAM", "processor", "price", "brand")])
+dim(my_task.mat)
+head(my_task.mat)
+
+
+X.my_task.mat=efcode.attmat.f(my_task.mat)  
+dim(X.my_task.mat)
+head(X.my_task.mat)
+
+my_task.pricevec=my_task$price-mean(my_task$price)
+head(my_task.pricevec)
+
+X.my_task.brands=X.my_task.mat[,9:11]
+X.my_task.BrandByPrice = X.my_task.brands*my_task.pricevec
+X.my_task.matrix=cbind(X.my_task.mat,X.my_task.BrandByPrice)
+dim(X.my_task.matrix)
+head(X.my_task.matrix)
+
+betavec.myextra2=matrix(betameansoverall2,ncol=1,byrow=TRUE)
+myxextrabeta2=X.my_task.matrix%*%(betavec.myextra2)
+myxextrabeta2=matrix(myxextrabeta2,ncol=3,byrow=TRUE)
+dim(myxextrabeta2)
+
+myexpxbetaextra2=exp(myxextrabeta2)
+rsumvec.myextra2=rowSums(myexpxbetaextra2)
+pchoicemat.myextra2=myexpxbetaextra2/rsumvec.myextra2
+pchoicemat.myextra2
+
+
+
+
+
+
+
+
+```
+
+
+
+1) Prepare the Full Model
+2) Comparisons of Levels in each attribute
+3) Imapct of Interaction between Brand/Price
+4) Parts-Worth plot - R Plot/Excel Plot
+
+```{r, echo=FALSE}
+plot(betameansoverall2)
+barplot(betameansoverall2)
+```
+
+=======================================================================
+STEP11 - Ends              
+=======================================================================
