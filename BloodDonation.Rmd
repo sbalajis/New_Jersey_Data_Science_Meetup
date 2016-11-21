@@ -1,0 +1,249 @@
+---
+title: "Blood Donation Data"
+author: "Ramesh Natarajan"
+date: "November 6, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+### Set working directory here.
+```{r, include=TRUE}
+setwd("C:/R/Kaggle ToolSet/WIP")
+```
+
+### One way to Load the data is through file explorer
+```{r}
+# transFusionData <- read.csv(file.choose()) 
+```
+
+### Here we use Read the CSV File
+```{r, include=TRUE}
+transFusionData <- read.csv("transfusion.data")  
+# sep = ";" (if separated by Colon) - lot of options for this command, Refer Help.
+```
+
+## Attribute Information:
+
+Given is the variable name, variable type, the measurement unit and a brief description. The "Blood Transfusion Service Center" is a classification problem. The order of this listing corresponds to the order of numerals along the rows of the database. 
+
+R (Recency - months since last donation), 
+F (Frequency - total number of donation), 
+M (Monetary - total blood donated in c.c.), 
+T (Time - months since first donation), and 
+a binary variable representing whether he/she donated blood in March 2007 (1 stand for donating blood; 0 stands for not donating blood). 
+
+
+### Now that you have read the file, do basic analysis - ensure the file has been read correctly
+```{r, include=TRUE}
+head(transFusionData)
+tail(transFusionData)
+colnames(transFusionData)
+str(transFusionData)
+```
+
+### Read the content as data frame
+```{r, include=TRUE}
+df <- data.frame(transFusionData)
+```
+
+### Now that you have assigned the dataframe, Confirm the assignment, do basic analysis
+```{r, include=TRUE}
+head(df)
+str(df)
+```
+
+### Find out if any column value is missing.
+```{r, include=TRUE}
+anyNA(df)
+```
+False means there is nothing missing
+
+### Change the column names to be meaningful and easy to manage
+```{r, include=TRUE}
+cols <- c("MthsElapsedSinceLast","TimesDonated","VolumeDonated","MthsElapsedSinceFirst", "DonatedInMar07")
+colnames(df) <- cols
+# Ensure the names were changed.
+str(df)
+```
+
+### Include the GGPlot2 Library.
+```{r, include=TRUE}
+#if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+library(ggplot2)
+```
+
+### Now that we have confirmed all the data, let us proceed to GGPlot 
+```{r, include=TRUE}
+pl1 <- ggplot(data=df, aes(x=DonatedInMar07, y=TimesDonated))
+pl1 + geom_point()
+```
+
+>=====================================================================================
+>Inference: The donation level drops after people have donated more than 25 times. 
+>Also, Those who donated higher than 25 times, seems to be regular donars.
+>=====================================================================================
+
+```{r, include=TRUE}
+pl1 <- ggplot(data=df, aes(x=DonatedInMar07, y=VolumeDonated))
+pl1 + geom_point()
+```
+
+>=====================================================================================
+>Inference: The donation volumne is generally below 6250 CC.
+>Also, Those who donated higher than 30 times, seems to be donating higher amount of volume.
+>=====================================================================================
+
+```{r, include=TRUE}
+pl1 <- ggplot(data=df, aes(x=DonatedInMar07, y=MthsElapsedSinceLast))
+pl1 + geom_point()
+```
+
+>=====================================================================================
+>Inference: If the Months elasped since the last donation is less than 30, people donate more.
+>If the months elasped is greater than 30, they lose interest and very few people give blood.
+>=====================================================================================
+
+```{r, include=TRUE}
+pl1 <- ggplot(data=df, aes(x=DonatedInMar07, y=MthsElapsedSinceFirst))
+pl1 + geom_point()
+```
+
+>=====================================================================================
+>Inference: The Months elasped since the First Months does not seems to be a good indicator.
+>The predictor seems to be distributed evenly with Donors & non-donors. We should try this
+>predictor with other predictors to get more insights.
+>=====================================================================================
+
+
+## Histogram
+```{r, include=TRUE}
+hist1 <- ggplot(data=df, aes(x=MthsElapsedSinceLast)) + geom_histogram()
+print(hist1)
+```
+
+>=======================================================================================
+>Inference: Here The Months elasped since the Last donation shows significant drop in count
+>after 30 months. Which is consistent with other observations.  
+>=====================================================================================
+
+```{r, include=TRUE}
+hist1 <- ggplot(data=df, aes(x=MthsElapsedSinceFirst)) + geom_histogram()
+print(hist1)
+```
+
+
+```{r, include=TRUE}
+hist1 <- ggplot(data=df, aes(x=TimesDonated)) + geom_histogram()
+print(hist1)
+```
+
+
+## Scatter plots 
+```{r, include=TRUE}
+Splot1 = ggplot(data=df, aes(x=TimesDonated, y=MthsElapsedSinceFirst))
+Splot1 + geom_point()
+# Something like Bubble Graph 
+Splot1 + geom_point(aes(size=TimesDonated))
+
+# Now color by cylinder - Useful for segmentation
+Splot1 + geom_point(aes(size=TimesDonated, color=factor(DonatedInMar07)))
+```
+
+>=====================================================================================
+>Inference: If the MonthsElapsedSinceFirst >= 12 and TimeDonated <= 10, the liklihood of
+>Non Donated is significantly high.
+>Also If the MonthsElapsedSinceFirst >= 25 and TimesDonated >- 10, the liklihood of Donated is 
+>significantly high. We can consider this as new factors. 
+
+>Just a caution: May be overfitting?
+>=====================================================================================
+
+## Bar Plots
+```{r, include=TRUE}
+bplot1 <- ggplot(df, aes(x=MthsElapsedSinceLast))
+bplot1 + geom_bar()
+
+bplot1 + geom_bar(aes(fill=factor(DonatedInMar07)))
+bplot1 + geom_bar(aes(fill=factor(DonatedInMar07)), position='dodge')  
+bplot1 + geom_bar(aes(fill=factor(DonatedInMar07)), position='fill')  
+```
+
+>=====================================================================================
+>Inference: If the MonthsElapsedSinceLast >= 5 the liklihood of Non Donated is significantly high.
+>=====================================================================================
+
+## Box Plots
+```{r, include=TRUE}
+boxplot1 <- ggplot(df, aes(x=factor(DonatedInMar07), y=MthsElapsedSinceLast))
+print(boxplot1 + geom_boxplot())
+# We can add color
+boxplot1 + geom_boxplot(aes(fill=factor(DonatedInMar07)))
+```
+
+### Grab only numeric columns
+```{r, include=TRUE}
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+
+num.cols <- sapply(df, is.numeric)
+
+# Filter to numeric columns for correlation
+cor.data <- cor(df[,num.cols])
+
+cor.data
+
+library(corrplot)
+library(corrgram)
+
+# Usual Correlation plot.c
+corrplot(cor.data,method='color')
+
+# one more variation of Correlation Plot
+corrgram(df,order=TRUE, lower.panel=panel.shade, upper.panel=panel.pie, text.panel=panel.txt)
+```
+  
+
+### Splitting Dataset into Training and Test Datasets.
+```{r, include=TRUE}
+# Import Library
+library(caTools)
+# Set a random see so your "random" results are the same as this notebook
+set.seed(101) 
+
+# It is better to split the dataset on the response variable, even though any variable is good enough.
+
+# Split up the sample, basically randomly assigns a booleans to a new column "sample"
+sample <- sample.split(df$DonatedInMar07, SplitRatio = 0.70) # SplitRatio = percent of sample==TRUE
+
+# Training Data
+train = subset(df, sample == TRUE)
+
+# Testing Data
+test = subset(df, sample == FALSE)
+
+# Test the Training and Test Data
+str(train)
+str(test)
+
+# # Assign the Data as a Dataframe
+# dfTrain <- train
+# dfTest  <- test
+# 
+# ## Now that we confirmed the input data, write the data back to keep a backup file, before we do any operation.
+# 
+# ## Write the Backup CSV file 
+# write.csv(dfTrain, file = "trainbackup.csv")
+# write.csv(dfTest, file = "testbackup.csv")
+
+## You can visit the directory and check 
+```
